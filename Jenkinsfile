@@ -11,7 +11,6 @@ pipeline {
         timeout(time: 1, unit: 'HOURS')
         disableConcurrentBuilds()
         buildDiscarder(logRotator(numToKeepStr: '5'))
-        cleanWs()
     }
 
     // Environment variables
@@ -236,9 +235,6 @@ pipeline {
         failure {
             echo 'Deployment failed!'
             // slackSend(color: 'danger', message: "Deployment failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
-        }
-        always {
-            cleanWs()
         }
     }
 }
