@@ -1,91 +1,170 @@
 pipeline {
     agent any
+    
+    // Define tools
+    tools {
+        nodejs 'Node20'
+    }
 
+    // Pipeline options
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
+        cleanWs()
+    }
+
+    // Environment variables
     environment {
-        EC2_IP = credentials('EC2_IP_CREDENTIAL')     // Fetch EC2 IP from Jenkins credentials
-        SSH_USER = credentials('SSH_USER_CREDENTIAL') // Fetch SSH username from Jenkins credentials
-        APP_DIR = credentials('APP_DIR_CREDENTIAL')   // Fetch app directory from Jenkins credentials
-        NODE_ENV = 'production'                       // Node.js environment
+        EC2_IP = credentials('EC2_IP_CREDENTIAL')
+        SSH_USER = credentials('SSH_USER_CREDENTIAL')
+        APP_DIR = credentials('APP_DIR_CREDENTIAL')
+        NODE_ENV = 'production'
+        SSH_OPTS = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+        BACKUP_DIR = '/home/ubuntu/app_backups'
     }
 
     stages {
+        // Validation Stage
+        stage('Validate Environment') {
+            steps {
+                script {
+                    // Check if all required credentials are available
+                    if (!env.EC2_IP?.trim() || !env.SSH_USER?.trim() || !env.APP_DIR?.trim()) {
+                        error "Missing required credentials"
+                    }
+                    
+                    // Verify Node.js installation
+                    sh '''
+                        echo "Node version: $(node --version)"
+                        echo "NPM version: $(npm --version)"
+                    '''
+                }
+            }
+        }
+
+        // Clone Repository Stage
         stage('Clone Repository') {
             steps {
-                echo 'Cloning repository...'
-                git branch: 'main', url: 'https://github.com/benacton/nextjs-blog.git'
+                script {
+                    try {
+                        echo 'Cloning repository...'
+                        git branch: 'main', 
+                            url: 'https://github.com/benacton/nextjs-blog.git',
+                            changelog: true
+                    } catch (Exception e) {
+                        error "Failed to clone repository: ${e.getMessage()}"
+                    }
+                }
             }
         }
 
+        // Install Dependencies Stage
         stage('Install Dependencies') {
             steps {
-                echo 'Installing dependencies...'
                 script {
-                    def nodejs = tool name: 'Node20', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
-                    env.PATH = "${nodejs}/bin:${env.PATH}"
-                    // Ensure both devDependencies and dependencies are installed
-                    sh 'npm install'
+                    try {
+                        echo 'Installing dependencies...'
+                        // Use npm ci for clean installs
+                        sh '''
+                            if [ -d node_modules ]; then
+                                echo "Using cached node_modules"
+                                npm install
+                            else
+                                npm ci
+                            fi
+                        '''
+                    } catch (Exception e) {
+                        error "Failed to install dependencies: ${e.getMessage()}"
+                    }
                 }
             }
         }
 
+        // Security Audit Stage
+        stage('Security Audit') {
+            steps {
+                script {
+                    try {
+                        echo 'Running security audit...'
+                        sh 'npm audit'
+                    } catch (Exception e) {
+                        // Don't fail the build, but warn about security issues
+                        warning "Security audit found issues: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        // Verify TailwindCSS Stage
         stage('Verify TailwindCSS Setup') {
             steps {
-                echo 'Verifying TailwindCSS is installed...'
                 script {
-                    // Reinstall tailwindcss in case of issues
-                    sh 'npm install tailwindcss postcss autoprefixer'
+                    try {
+                        echo 'Verifying TailwindCSS installation...'
+                        sh 'npm install tailwindcss postcss autoprefixer'
+                    } catch (Exception e) {
+                        error "Failed to verify TailwindCSS: ${e.getMessage()}"
+                    }
                 }
             }
         }
 
+        // Build Stage
         stage('Build') {
             steps {
-                echo 'Building the project...'
-                sh 'npm run build' // Builds your Next.js app
+                script {
+                    try {
+                        echo 'Building the project...'
+                        sh 'npm run build'
+                    } catch (Exception e) {
+                        error "Build failed: ${e.getMessage()}"
+                    }
+                }
             }
         }
 
-        
-    //     stage('Deploy to EC2') {
-    //         steps {
-    //             echo 'Deploying application to EC2...'
-    //             sshagent(credentials: ['jenkins-ec2-key']) {
-    //                 sh """
-    //                 set -x
-    //                 # Verify SSH connectivity
-    //                 ssh -o StrictHostKeyChecking=no $SSH_USER@$EC2_IP "echo 'SSH connection successful!'"
-
-    //                 # Prepare app directory on EC2
-    //                 ssh $SSH_USER@$EC2_IP << 'EOF'
-    //                 mkdir -p $APP_DIR || exit 1
-    //                 rm -rf $APP_DIR/* || exit 1
-    //                 exit
-    //                 EOF
-
-    //                 # Copy project files to EC2
-    //                 rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR || exit 1
-
-    //                 # Connect to EC2 and set up application
-    //                 ssh $SSH_USER@$EC2_IP << 'EOF'
-    //                 cd $APP_DIR || exit 1
-    //                 npm install --omit=dev || exit 1
-    //                 pm2 delete nextjs-blog || true
-    //                 pm2 start npm --name nextjs-blog -- start || exit 1
-    //                 pm2 save || exit 1
-    //                 exit
-    //                 EOF
-    //                 """
-    //             }
-    //         }
-    //     }
-    }
-
-    post {
-        success {
-            echo 'Deployment successful!'
+        // Pre-deployment Check Stage
+        stage('Pre-deployment Check') {
+            steps {
+                script {
+                    try {
+                        echo 'Testing SSH connection...'
+                        sshagent(credentials: ['jenkins-ec2-key']) {
+                            sh """
+                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} 'echo "SSH connection successful"'
+                            """
+                        }
+                    } catch (Exception e) {
+                        error "Pre-deployment check failed: ${e.getMessage()}"
+                    }
+                }
+            }
         }
-        failure {
-            echo 'Deployment failed!'
+
+        // Backup Stage
+        stage('Backup') {
+            steps {
+                script {
+                    try {
+                        echo 'Creating backup...'
+                        sshagent(credentials: ['jenkins-ec2-key']) {
+                            sh """
+                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "
+                                    mkdir -p ${env.BACKUP_DIR}
+                                    if [ -d ${env.APP_DIR} ]; then
+                                        timestamp=\$(date +%Y%m%d_%H%M%S)
+                                        cp -r ${env.APP_DIR} ${env.BACKUP_DIR}/backup_\${timestamp}
+                                        echo 'Backup created successfully'
+                                    fi
+                                "
+                            """
+                        }
+                    } catch (Exception e) {
+                        warning "Backup failed but continuing deployment: ${e.getMessage()}"
+                    }
+                }
+            }
         }
     }
 }
