@@ -22,7 +22,18 @@ pipeline {
                 script {
                     def nodejs = tool name: 'Node20', type: 'jenkins.plugins.nodejs.tools.NodeJSInstallation'
                     env.PATH = "${nodejs}/bin:${env.PATH}"
+                    // Ensure both devDependencies and dependencies are installed
                     sh 'npm install'
+                }
+            }
+        }
+
+        stage('Verify TailwindCSS Setup') {
+            steps {
+                echo 'Verifying TailwindCSS is installed...'
+                script {
+                    // Reinstall tailwindcss in case of issues
+                    sh 'npm install tailwindcss postcss autoprefixer'
                 }
             }
         }
@@ -44,7 +55,7 @@ pipeline {
                     mkdir -p $APP_DIR
                     rm -rf $APP_DIR/*
                     exit
-        EOF
+EOF
                     # Copy project files to EC2 (excluding node_modules)
                     rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR
 
@@ -56,7 +67,7 @@ pipeline {
                     pm2 start npm --name nextjs-blog -- start
                     pm2 save
                     exit
-        EOF
+EOF
                     """
                 }
             }
