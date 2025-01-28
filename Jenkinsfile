@@ -50,24 +50,29 @@ pipeline {
                 echo 'Deploying application to EC2...'
                 sshagent(credentials: ['jenkins-ec2-key']) {
                     sh """
-                    # Connect to EC2 instance and prepare the app directory
-                    ssh -o StrictHostKeyChecking=no $SSH_USER@$EC2_IP << EOF
-                    mkdir -p $APP_DIR
-                    rm -rf $APP_DIR/*
-                    exit
-EOF
-                    # Copy project files to EC2 (excluding node_modules)
-                    rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR
+                    set -x
+                    # Verify SSH connectivity
+                    ssh -o StrictHostKeyChecking=no $SSH_USER@$EC2_IP "echo 'SSH connection successful!'"
 
-                    # Connect to EC2 and install production dependencies
-                    ssh $SSH_USER@$EC2_IP << EOF
-                    cd $APP_DIR
-                    npm install --omit=dev
-                    pm2 delete nextjs-blog || true
-                    pm2 start npm --name nextjs-blog -- start
-                    pm2 save
+                    # Prepare app directory on EC2
+                    ssh $SSH_USER@$EC2_IP << 'EOF'
+                    mkdir -p $APP_DIR || exit 1
+                    rm -rf $APP_DIR/* || exit 1
                     exit
-EOF
+                    EOF
+
+                    # Copy project files to EC2
+                    rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR || exit 1
+
+                    # Connect to EC2 and set up application
+                    ssh $SSH_USER@$EC2_IP << 'EOF'
+                    cd $APP_DIR || exit 1
+                    npm install --omit=dev || exit 1
+                    pm2 delete nextjs-blog || true
+                    pm2 start npm --name nextjs-blog -- start || exit 1
+                    pm2 save || exit 1
+                    exit
+                    EOF
                     """
                 }
             }
