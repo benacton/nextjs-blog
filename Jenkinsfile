@@ -45,46 +45,46 @@ pipeline {
             }
         }
 
-        stage('Deploy to EC2') {
-            steps {
-                echo 'Deploying application to EC2...'
-                sshagent(credentials: ['jenkins-ec2-key']) {
-                    sh """
-                    set -x
-                    # Verify SSH connectivity
-                    ssh -o StrictHostKeyChecking=no $SSH_USER@$EC2_IP "echo 'SSH connection successful!'"
+    //     stage('Deploy to EC2') {
+    //         steps {
+    //             echo 'Deploying application to EC2...'
+    //             sshagent(credentials: ['jenkins-ec2-key']) {
+    //                 sh """
+    //                 set -x
+    //                 # Verify SSH connectivity
+    //                 ssh -o StrictHostKeyChecking=no $SSH_USER@$EC2_IP "echo 'SSH connection successful!'"
 
-                    # Prepare app directory on EC2
-                    ssh $SSH_USER@$EC2_IP << 'EOF'
-                    mkdir -p $APP_DIR || exit 1
-                    rm -rf $APP_DIR/* || exit 1
-                    exit
-                    EOF
+    //                 # Prepare app directory on EC2
+    //                 ssh $SSH_USER@$EC2_IP << 'EOF'
+    //                 mkdir -p $APP_DIR || exit 1
+    //                 rm -rf $APP_DIR/* || exit 1
+    //                 exit
+    //                 EOF
 
-                    # Copy project files to EC2
-                    rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR || exit 1
+    //                 # Copy project files to EC2
+    //                 rsync -av --exclude='node_modules' ./ $SSH_USER@$EC2_IP:$APP_DIR || exit 1
 
-                    # Connect to EC2 and set up application
-                    ssh $SSH_USER@$EC2_IP << 'EOF'
-                    cd $APP_DIR || exit 1
-                    npm install --omit=dev || exit 1
-                    pm2 delete nextjs-blog || true
-                    pm2 start npm --name nextjs-blog -- start || exit 1
-                    pm2 save || exit 1
-                    exit
-                    EOF
-                    """
-                }
-            }
-        }
-    }
+    //                 # Connect to EC2 and set up application
+    //                 ssh $SSH_USER@$EC2_IP << 'EOF'
+    //                 cd $APP_DIR || exit 1
+    //                 npm install --omit=dev || exit 1
+    //                 pm2 delete nextjs-blog || true
+    //                 pm2 start npm --name nextjs-blog -- start || exit 1
+    //                 pm2 save || exit 1
+    //                 exit
+    //                 EOF
+    //                 """
+    //             }
+    //         }
+    //     }
+    // }
 
-    post {
-        success {
-            echo 'Deployment successful!'
-        }
-        failure {
-            echo 'Deployment failed!'
-        }
-    }
+    // post {
+    //     success {
+    //         echo 'Deployment successful!'
+    //     }
+    //     failure {
+    //         echo 'Deployment failed!'
+    //     }
+    // }
 }
