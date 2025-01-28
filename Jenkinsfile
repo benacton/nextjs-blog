@@ -1,7 +1,7 @@
 pipeline {
     agent any
 
-     environment {
+    environment {
         EC2_IP = credentials('EC2_IP_CREDENTIAL')     // Fetch EC2 IP from Jenkins credentials
         SSH_USER = credentials('SSH_USER_CREDENTIAL') // Fetch SSH username from Jenkins credentials
         APP_DIR = credentials('APP_DIR_CREDENTIAL')   // Fetch app directory from Jenkins credentials
@@ -26,13 +26,6 @@ pipeline {
                 }
             }
         }
-
-        // stage('Run Tests') {
-        //     steps {
-        //         echo 'Running tests...'
-        //         sh 'npm test' // Ensure you have test scripts in package.json
-        //     }
-        // }
 
         stage('Build') {
             steps {
