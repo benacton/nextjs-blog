@@ -7,7 +7,6 @@ pipeline {
                 docker {
                     image 'node:20-alpine'
                     reuseNode true
-                    args '-u node' // Use the "node" user inside the container
                 }
             }
             steps {
