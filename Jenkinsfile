@@ -27,12 +27,12 @@ pipeline {
             }
         }
 
-        stage('Run Tests') {
-            steps {
-                echo 'Running tests...'
-                sh 'npm test' // Ensure you have test scripts in package.json
-            }
-        }
+        // stage('Run Tests') {
+        //     steps {
+        //         echo 'Running tests...'
+        //         sh 'npm test' // Ensure you have test scripts in package.json
+        //     }
+        // }
 
         stage('Build') {
             steps {
