@@ -7,8 +7,6 @@ pipeline {
 
     options {
         timeout(time: 1, unit: 'HOURS')
-        disableConcurrentBuilds()
-        buildDiscarder(logRotator(numToKeepStr: '5'))
     }
 
     environment {
@@ -16,136 +14,81 @@ pipeline {
         SSH_USER = credentials('SSH_USER_CREDENTIAL')
         APP_DIR = credentials('APP_DIR_CREDENTIAL')
         NODE_ENV = 'production'
-        SSH_OPTS = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-        BACKUP_DIR = '/home/ubuntu/app_backups'
     }
 
     stages {
         stage('Clone Repository') {
             steps {
-                script {
-                    try {
-                        echo 'Cloning repository...'
-                        git branch: 'main', 
-                            url: 'https://github.com/benacton/nextjs-blog.git'
-                    } catch (Exception e) {
-                        error "Failed to clone repository: ${e.getMessage()}"
-                    }
-                }
+                git branch: 'main', 
+                    url: 'https://github.com/benacton/nextjs-blog.git'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Setup Project') {
             steps {
-                script {
-                    try {
-                        echo 'Installing dependencies...'
-                        sh '''
-                            npm cache clean --force
-                            rm -rf node_modules package-lock.json
-                            npm install
-                        '''
-                    } catch (Exception e) {
-                        error "Failed to install dependencies: ${e.getMessage()}"
-                    }
-                }
-            }
-        }
-
-        stage('Verify TailwindCSS Setup') {
-            steps {
-                script {
-                    try {
-                        echo 'Verifying TailwindCSS installation...'
-                        sh '''
-                            # Install dependencies globally to ensure executables are available
-                            npm install -g tailwindcss postcss autoprefixer
-                            
-                            # Install as dev dependencies in the project
-                            npm install -D tailwindcss@latest postcss@latest autoprefixer@latest
-                            
-                            # Create Tailwind config if it doesn't exist
-                            if [ ! -f tailwind.config.js ]; then
-                                npx tailwindcss init
-                            fi
-                            
-                            # Create PostCSS config if it doesn't exist
-                            if [ ! -f postcss.config.js ]; then
-                                echo "module.exports = {
-                                    plugins: {
-                                        tailwindcss: {},
-                                        autoprefixer: {},
-                                    }
-                                }" > postcss.config.js
-                            fi
-                            
-                            # Verify configs exist
-                            ls -la tailwind.config.js postcss.config.js
-                        '''
-                    } catch (Exception e) {
-                        error "Failed to verify TailwindCSS: ${e.getMessage()}"
-                    }
-                }
+                sh '''
+                    # Clean install
+                    rm -rf node_modules package-lock.json
+                    
+                    # Install all dependencies including dev dependencies
+                    npm install
+                    
+                    # Install Tailwind CSS and its dependencies
+                    npm install -D tailwindcss@latest postcss@latest autoprefixer@latest
+                    
+                    # Initialize Tailwind CSS if config doesn't exist
+                    if [ ! -f tailwind.config.js ]; then
+                        cat > tailwind.config.js << 'EOL'
+module.exports = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+EOL
+                    fi
+                    
+                    # Create PostCSS config
+                    cat > postcss.config.js << 'EOL'
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+EOL
+                '''
             }
         }
 
         stage('Build') {
             steps {
-                script {
-                    try {
-                        echo 'Building the project...'
-                        sh '''
-                            echo "Node version: $(node -v)"
-                            echo "NPM version: $(npm -v)"
-                            echo "Current directory: $(pwd)"
-                            echo "Directory contents:"
-                            ls -la
-                            echo "Package.json contents:"
-                            cat package.json
-                            
-                            # Set NODE_ENV
-                            export NODE_ENV=production
-                            
-                            # Build the project with detailed output
-                            npm run build || {
-                                echo "Build failed. Checking for errors..."
-                                exit 1
-                            }
-                        '''
-                    } catch (Exception e) {
-                        echo "Build error details: ${e.getMessage()}"
-                        error "Build stage failed. Check the logs above for details."
-                    }
-                }
+                sh '''
+                    # Build the project
+                    npm run build
+                '''
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                script {
-                    try {
-                        sshagent(credentials: ['jenkins-ec2-key']) {
-                            sh """
-                                # Test SSH connection
-                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "echo 'SSH connection successful'"
-                                
-                                # Create directory and clean it
-                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "mkdir -p ${env.APP_DIR} && rm -rf ${env.APP_DIR}/*"
-                                
-                                # Copy files
-                                rsync -avz --exclude 'node_modules' ./ ${env.SSH_USER}@${env.EC2_IP}:${env.APP_DIR}/
-                                
-                                # Install and start
-                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "cd ${env.APP_DIR} && \
-                                    npm install --production && \
-                                    pm2 delete nextjs-blog || true && \
-                                    pm2 start npm --name nextjs-blog -- start && \
-                                    pm2 save"
-                            """
-                        }
-                    } catch (Exception e) {
-                        error "Deployment failed: ${e.getMessage()}"
-                    }
+                sshagent(credentials: ['jenkins-ec2-key']) {
+                    sh '''
+                        # Deploy using rsync
+                        rsync -avz --exclude 'node_modules' ./ ${SSH_USER}@${EC2_IP}:${APP_DIR}/
+                        
+                        # Install and start on server
+                        ssh ${SSH_USER}@${EC2_IP} "cd ${APP_DIR} && \
+                            npm install --production && \
+                            pm2 delete nextjs-blog || true && \
+                            pm2 start npm --name nextjs-blog -- start && \
+                            pm2 save"
+                    '''
                 }
             }
         }
