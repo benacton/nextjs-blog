@@ -58,8 +58,29 @@ pipeline {
                     try {
                         echo 'Verifying TailwindCSS installation...'
                         sh '''
-                            npm install -D tailwindcss postcss autoprefixer
-                            npx tailwindcss init -p
+                            # Install dependencies globally to ensure executables are available
+                            npm install -g tailwindcss postcss autoprefixer
+                            
+                            # Install as dev dependencies in the project
+                            npm install -D tailwindcss@latest postcss@latest autoprefixer@latest
+                            
+                            # Create Tailwind config if it doesn't exist
+                            if [ ! -f tailwind.config.js ]; then
+                                npx tailwindcss init
+                            fi
+                            
+                            # Create PostCSS config if it doesn't exist
+                            if [ ! -f postcss.config.js ]; then
+                                echo "module.exports = {
+                                    plugins: {
+                                        tailwindcss: {},
+                                        autoprefixer: {},
+                                    }
+                                }" > postcss.config.js
+                            fi
+                            
+                            # Verify configs exist
+                            ls -la tailwind.config.js postcss.config.js
                         '''
                     } catch (Exception e) {
                         error "Failed to verify TailwindCSS: ${e.getMessage()}"
