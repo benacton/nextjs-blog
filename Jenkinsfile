@@ -166,5 +166,79 @@ pipeline {
                 }
             }
         }
+
+        // Deploy Stage
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    try {
+                        echo 'Deploying application to EC2...'
+                        sshagent(credentials: ['jenkins-ec2-key']) {
+                            sh """
+                                # Verify SSH connectivity
+                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "echo 'Starting deployment...'"
+
+                                # Prepare app directory
+                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "
+                                    mkdir -p ${env.APP_DIR}
+                                    rm -rf ${env.APP_DIR}/*
+                                "
+
+                                # Copy project files
+                                rsync -avz --exclude='node_modules' --exclude='.git' \
+                                    -e "ssh ${env.SSH_OPTS}" \
+                                    ./ ${env.SSH_USER}@${env.EC2_IP}:${env.APP_DIR}/
+
+                                # Setup and start application
+                                ssh ${env.SSH_OPTS} ${env.SSH_USER}@${env.EC2_IP} "
+                                    cd ${env.APP_DIR}
+                                    npm install --omit=dev
+                                    pm2 delete nextjs-blog || true
+                                    pm2 start npm --name nextjs-blog -- start
+                                    pm2 save
+                                "
+                            """
+                        }
+                    } catch (Exception e) {
+                        error "Deployment failed: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+
+        // Health Check Stage
+        stage('Health Check') {
+            steps {
+                script {
+                    try {
+                        echo 'Performing health check...'
+                        sh """
+                            # Wait for application to start
+                            sleep 10
+                            # Check if application is responding
+                            curl -f http://${env.EC2_IP}:3000 || exit 1
+                        """
+                    } catch (Exception e) {
+                        error "Health check failed: ${e.getMessage()}"
+                    }
+                }
+            }
+        }
+    }
+
+    // Post-build actions
+    post {
+        success {
+            echo 'Deployment successful!'
+            // You can add Slack notifications here if needed
+            // slackSend(color: 'good', message: "Deployment successful: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+        }
+        failure {
+            echo 'Deployment failed!'
+            // slackSend(color: 'danger', message: "Deployment failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}")
+        }
+        always {
+            cleanWs()
+        }
     }
 }
