@@ -45,6 +45,7 @@ pipeline {
             }
         }
 
+        
     //     stage('Deploy to EC2') {
     //         steps {
     //             echo 'Deploying application to EC2...'
@@ -77,14 +78,14 @@ pipeline {
     //             }
     //         }
     //     }
-    // }
+    }
 
-    // post {
-    //     success {
-    //         echo 'Deployment successful!'
-    //     }
-    //     failure {
-    //         echo 'Deployment failed!'
-    //     }
-    // }
+    post {
+        success {
+            echo 'Deployment successful!'
+        }
+        failure {
+            echo 'Deployment failed!'
+        }
+    }
 }
