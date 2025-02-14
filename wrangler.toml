@@ -1,4 +1,4 @@
 name = "my-nextjs-worker"
 compatibility_date = "2025-02-14"
-main = "./next"
+main = ".vercel/output/static/worker.js"  # or wherever the file is actually created
 node_compat = true

@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npx next-on-pages --experimental-minify",
+    "build": "next build && npx next-on-pages",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "deploy": "wrangler deploy"
   },
-  "dependencies": {
+  "dependencies": { 
     "autoprefixer": "^10.4.20",
     "next": "15.1.4",
     "react": "^19.0.0",
